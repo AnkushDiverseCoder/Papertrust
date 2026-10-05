@@ -17,6 +17,10 @@ import { findChromium } from "./render.mjs";
  *   PAPERTRUST_ROTATE_DAYS      optional  replace the signing key after this many days (default 365, 0 = never)
  *   PAPERTRUST_NAME             optional  name shown on the status page (default "Papertrust")
  *   PAPERTRUST_MAX_RENDERS      optional  PDFs rendered at the same time (default 2)
+ *   PAPERTRUST_ALLOW_PROXIED_SIGNING
+ *                               optional  "true" lets requests that arrive through a reverse proxy (a public
+ *                                         domain) sign and render. Off by default: through a domain the
+ *                                         instance is read-only (status page, health, public keys).
  *   CHROMIUM_PATH               optional  Chromium executable (found automatically in the usual places)
  *   PORT / HOST                 optional  default 4100 / 0.0.0.0
  */
@@ -54,6 +58,7 @@ export function loadConfig(env = process.env) {
     // the keystore password: a separate value when given, otherwise derived from the shared secret
     keyPassword: keyPassword || `papertrust-keystore:${secret}`,
     keyPasswordSeparate: !!keyPassword,
+    allowProxiedSigning: read(env, "PAPERTRUST_ALLOW_PROXIED_SIGNING").toLowerCase() === "true",
     dataDir: path.resolve(read(env, "PAPERTRUST_DATA_DIR") || "data"),
     rotateDays: int(env, "PAPERTRUST_ROTATE_DAYS", 365, 0, 3650),
     name: read(env, "PAPERTRUST_NAME").slice(0, 80) || "Papertrust",

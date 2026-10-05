@@ -27,6 +27,15 @@ const MAX_PAYLOAD = 16_000;
 const LABEL_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 
 /**
+ * Requests that reach Papertrust through a reverse proxy (Traefik, nginx, a tunnel: anything serving it on a
+ * domain) carry forwarding headers; calls from your application over the private network do not. Unless
+ * PAPERTRUST_ALLOW_PROXIED_SIGNING is "true", proxied requests may only read, so putting the status page on a
+ * domain never opens the signing endpoints to the internet, even to someone holding the secret.
+ */
+const PROXY_HEADERS = ["x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "x-real-ip", "forwarded", "cf-connecting-ip", "via"];
+export const cameThroughProxy = (headers) => PROXY_HEADERS.some((h) => headers[h] !== undefined);
+
+/**
  * Start everything: open (or create) the keystore, prepare the renderer, listen.
  * @param {ReturnType<import("./config.mjs").loadConfig>} config
  * @param {{ version?: string, log?: (msg: string) => void }} [options]
@@ -68,7 +77,7 @@ export async function startPapertrust(config, { version = "dev", log = (m) => co
       const html = statusPage({
         name: config.name, version, startedAt, chain: keystore.publicChain(), rotateDays: config.rotateDays,
         rendering: { available: renderer.available, chromium: !!config.chromiumPath, origins: config.origins.length },
-        keyPasswordSeparate: config.keyPasswordSeparate, stats, lastError,
+        keyPasswordSeparate: config.keyPasswordSeparate, publicReadOnly: !config.allowProxiedSigning, stats, lastError,
       });
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff",
@@ -123,6 +132,10 @@ export async function startPapertrust(config, { version = "dev", log = (m) => co
       try {
         let input = {};
         if (req.method === "POST") {
+          if (!config.allowProxiedSigning && cameThroughProxy(req.headers)) {
+            stats.refused++;
+            return json(res, 403, { error: "signing is only available on the private network" });
+          }
           const body = Buffer.concat(chunks);
           if (!authentic({ method: req.method, path: pathOnly, headers: req.headers, body })) {
             stats.refused++;

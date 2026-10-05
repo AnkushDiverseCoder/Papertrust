@@ -184,6 +184,12 @@ Chromium starts on the first render and closes after five idle minutes, so an id
 - `PAPERTRUST_ALLOWED_ORIGINS` must be your application's **internal** address as Papertrust sees it (for example `http://myapp:3000`), and your application must call the render endpoint with URLs on that origin.
 - Papertrust makes no outgoing internet connections. While rendering, it blocks every request outside the allowed origins.
 
+### Watching it on a domain (optional)
+
+You may give Papertrust a domain so you can open its status page from anywhere. That is safe by design: requests that arrive through a reverse proxy carry forwarding headers (`X-Forwarded-For` and similar), and Papertrust answers them **read-only**. The status page, `/health` and `/v1/keys` work; `/v1/sign` and `/v1/render` answer `403` even with the right secret. Your application keeps calling the private address, which is unaffected.
+
+Still put a login in front of the domain (for example HTTP Basic Auth in your proxy; Dokploy has it under the application's **Security** tab), so the status page isn't open to everyone.
+
 ### Docker Compose
 
 Copy [`docker-compose.example.yml`](docker-compose.example.yml) to `docker-compose.yml`, create a `.env` next to it with `PAPERTRUST_SECRET` and `PAPERTRUST_KEY_PASSWORD`, set `PAPERTRUST_ALLOWED_ORIGINS` to your application's service name and port, then:
@@ -243,6 +249,7 @@ All settings are environment variables. Only the first is required.
 | `PAPERTRUST_ROTATE_DAYS` | `365` | Replace the signing key after this many days. `0` turns automatic rotation off. |
 | `PAPERTRUST_NAME` | `Papertrust` | Name shown on the status page. |
 | `PAPERTRUST_MAX_RENDERS` | `2` | PDFs rendered at the same time (1–8). |
+| `PAPERTRUST_ALLOW_PROXIED_SIGNING` | `false` | `true` lets requests arriving through a reverse proxy (a domain) sign and render. Leave it off: then a domain only ever shows the status page, health and public keys. |
 | `CHROMIUM_PATH` | found automatically | Path to Chromium, Chrome or Edge. |
 | `PORT`, `HOST` | `4100`, `0.0.0.0` | Where the service listens. |
 
@@ -389,6 +396,7 @@ Inside Docker: `docker exec -it papertrust node bin/papertrust.mjs keys`.
 | `that URL is not on an allowed origin` | The render URL must start with one of the allowed origins exactly (scheme, host and port). |
 | `the page answered 404` / `302` | The page needs a login or the token expired. Render pages must open without cookies. |
 | `not marked ready for this label` | The page doesn't contain `data-papertrust-ready="<label>"` with the exact label you sent. |
+| `403 signing is only available on the private network` | The request came through a domain or proxy. Call Papertrust on its private address (e.g. `http://papertrust:4100`), not its domain. |
 | `401 not authenticated` | Wrong secret, the two machines' clocks differ by more than 60 seconds, or the same request was sent twice. |
 | Fonts look wrong in the PDF | Install the fonts in the image (the default covers Latin and Devanagari) or embed web fonts from your own origin. |
 

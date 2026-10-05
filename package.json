@@ -1,21 +1,50 @@
 {
   "name": "papertrust",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Self-hosted document signing: render pages to PDF, sign them with Ed25519 + post-quantum ML-DSA-65, and prove later that nothing changed. No central authority, no accounts.",
   "type": "module",
   "license": "Apache-2.0",
   "author": "Thakur Ankush Singh (Vaishnavi Consultant)",
-  "repository": { "type": "git", "url": "git+https://github.com/AnkushDiverseCoder/Papertrust.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnkushDiverseCoder/Papertrust.git"
+  },
   "homepage": "https://github.com/AnkushDiverseCoder/Papertrust#readme",
-  "bugs": { "url": "https://github.com/AnkushDiverseCoder/Papertrust/issues" },
-  "keywords": ["digital-signature", "pdf", "document-signing", "verification", "ed25519", "ml-dsa", "post-quantum", "self-hosted"],
-  "bin": { "papertrust": "bin/papertrust.mjs" },
-  "exports": { ".": "./src/index.mjs" },
-  "files": ["bin", "src", "LICENSE", "NOTICE", "README.md", "SECURITY.md"],
+  "bugs": {
+    "url": "https://github.com/AnkushDiverseCoder/Papertrust/issues"
+  },
+  "keywords": [
+    "digital-signature",
+    "pdf",
+    "document-signing",
+    "verification",
+    "ed25519",
+    "ml-dsa",
+    "post-quantum",
+    "self-hosted"
+  ],
+  "bin": {
+    "papertrust": "bin/papertrust.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "SECURITY.md"
+  ],
   "scripts": {
     "start": "node bin/papertrust.mjs start",
     "test": "node --test --test-concurrency=1 \"test/*.test.mjs\""
   },
-  "engines": { "node": ">=24" },
-  "dependencies": { "playwright-core": "1.63.0" }
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
 }

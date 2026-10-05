@@ -81,6 +81,16 @@ test("sign: refused without the right secret, when replayed, or for reserved pur
   assert.equal((await post("/v1/sign", { purpose: "file", payload: "y" })).status, 400, "reserved purpose");
 });
 
+test("through a reverse proxy the instance is read-only", async () => {
+  const text = JSON.stringify({ purpose: "x", payload: "y" });
+  const headers = { ...signRequest(SECRET, "POST", "/v1/sign", text), "x-forwarded-for": "203.0.113.7" };
+  const { status, json } = await post("/v1/sign", { purpose: "x", payload: "y" }, { headers });
+  assert.equal(status, 403, "even with a valid signature");
+  assert.match(json.error, /private network/);
+  const keys = await fetch(pt.url + "/v1/keys", { headers: { "x-forwarded-for": "203.0.113.7" } });
+  assert.equal(keys.status, 200, "reading still works");
+});
+
 test("render: refuses URLs outside the allowed origins", async () => {
   const { status, json } = await post("/v1/render", { url: "http://example.com/doc", label: "INV-1" });
   assert.equal(status, 422);

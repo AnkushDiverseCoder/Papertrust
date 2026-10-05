@@ -23,7 +23,7 @@ function duration(ms) {
 /**
  * @param {{ name: string, version: string, startedAt: number, chain: object[], rotateDays: number,
  *           rendering: { available: boolean, chromium: boolean, origins: number },
- *           keyPasswordSeparate: boolean, stats: Record<string, number>, lastError: { at: number, message: string } | null }} s
+ *           keyPasswordSeparate: boolean, publicReadOnly: boolean, stats: Record<string, number>, lastError: { at: number, message: string } | null }} s
  */
 export function statusPage(s) {
   const current = s.chain[s.chain.length - 1];
@@ -92,7 +92,7 @@ export function statusPage(s) {
   <div class="grid">
     <div class="card"><div class="stat">${n(s.stats.signed)}</div><div class="label">signatures made since start</div></div>
     <div class="card"><div class="stat">${n(s.stats.rendered)}</div><div class="label">PDFs rendered and signed</div></div>
-    <div class="card"><div class="stat">${n(s.stats.refused)}</div><div class="label">requests refused (wrong secret, expired or replayed)</div></div>
+    <div class="card"><div class="stat">${n(s.stats.refused)}</div><div class="label">requests refused (wrong secret, expired, replayed or from outside)</div></div>
   </div>
 
   <div class="card">
@@ -109,6 +109,7 @@ export function statusPage(s) {
         <li>Every signature is made twice: <b>Ed25519</b> and <b>ML-DSA-65</b> (post-quantum). Both must check out.</li>
         <li>Private keys never leave this instance and are stored encrypted (AES-256-GCM, scrypt).</li>
         <li>Requests need the shared secret (HMAC), expire after 60 seconds and can't be replayed.</li>
+        <li>${s.publicReadOnly ? "Through a public domain this instance is read-only: signing works only on the private network." : "<b>Signing is allowed through a reverse proxy</b> (PAPERTRUST_ALLOW_PROXIED_SIGNING)."}</li>
       </ul>
       <p style="margin-bottom:0">${chip(s.keyPasswordSeparate, "Separate keystore password", "Keystore password comes from the shared secret")}</p>
     </div>
