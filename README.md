@@ -11,6 +11,8 @@ Papertrust turns a page of your application into a PDF, signs it, and gives you 
 
 Created by **Thakur Ankush Singh (Vaishnavi Consultant)**. Open source under the [Apache License 2.0](LICENSE).
 
+> **New to this?** Start with [How Papertrust works, in plain words](docs/HOW-IT-WORKS.md): pictures, a worked example and the questions people ask.
+
 ---
 
 ## Contents
@@ -353,6 +355,7 @@ All settings are environment variables. Only the first is required.
 | `PAPERTRUST_ROTATE_DAYS` | `365` | Replace the signing key after this many days. `0` turns automatic rotation off. |
 | `PAPERTRUST_NAME` | `Papertrust` | Name shown on the status page. |
 | `PAPERTRUST_MAX_RENDERS` | `2` | PDFs rendered at the same time (1–8). |
+| `PAPERTRUST_PREVIEW_SCALE` | `1` | Sharpness of the PNG preview: `1` (A4 at 794 px wide, small files) or `2` (twice as sharp, about 3–4× bigger). The PDF is vector either way. |
 | `PAPERTRUST_ALLOW_PROXIED_SIGNING` | `false` | `true` lets requests arriving through a reverse proxy (a domain) sign and render. Leave it off: then a domain only ever shows the status page, health and public keys. |
 | `CHROMIUM_PATH` | found automatically | Path to Chromium, Chrome or Edge. |
 | `PORT`, `HOST` | `4100`, `0.0.0.0` | Where the service listens. |
@@ -408,6 +411,7 @@ Mark the document on the page Papertrust opens:
 - The page is opened **without your users' cookies**. Protect it with a short-lived, single-use token in the URL that your application creates just before calling `/v1/render`.
 - Requests to origins outside `PAPERTRUST_ALLOWED_ORIGINS` are blocked during rendering. Inline images (data: URLs) or serve them from your application.
 - Use print CSS (`@page { size: A4 }`, `@media print`) to control the PDF layout.
+- Keep PDFs small: avoid CSS blend modes (`mix-blend-mode`) and finely tiled background patterns. Chrome's PDF printer turns those into large embedded pictures, which can make a one-page PDF 5–8× bigger. A few lines of light text work just as well as a watermark.
 
 ### 3. Storing
 

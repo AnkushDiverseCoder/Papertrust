@@ -78,7 +78,7 @@ export async function startPapertrust(config, { version = "dev", log = (m) => co
   const { keystore, created } = opened;
   log(created ? `created a new identity, key ${keystore.current().record.kid}` : `opened keystore, current key ${keystore.current().record.kid}`);
 
-  const renderer = createRenderer({ origins: config.origins, chromiumPath: config.chromiumPath, concurrency: config.concurrency });
+  const renderer = createRenderer({ origins: config.origins, chromiumPath: config.chromiumPath, concurrency: config.concurrency, previewScale: config.previewScale ?? 1 });
   const authentic = createAuthenticator(config.secret);
   const startedAt = Date.now();
   const stats = { signed: 0, rendered: 0, renderFailed: 0, refused: 0 };

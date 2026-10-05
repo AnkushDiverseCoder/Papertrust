@@ -44,9 +44,11 @@ export function findChromium(explicit) {
 export class RenderError extends Error {}
 
 /**
- * @param {{ origins: string[], chromiumPath: string | null, concurrency?: number, idleMs?: number, timeoutMs?: number }} options
+ * @param {{ origins: string[], chromiumPath: string | null, concurrency?: number, idleMs?: number, timeoutMs?: number, previewScale?: number }} options
+ *   previewScale: pixel density of the PNG picture (1 = 794 px wide per A4 page, 2 = twice as sharp and about 3–4×
+ *   bigger). The PDF itself is vector and the same at any scale.
  */
-export function createRenderer({ origins, chromiumPath, concurrency = 2, idleMs = 5 * 60_000, timeoutMs = 45_000 }) {
+export function createRenderer({ origins, chromiumPath, concurrency = 2, idleMs = 5 * 60_000, timeoutMs = 45_000, previewScale = 1 }) {
   let browser = null;
   let launching = null;
   let idleTimer = null;
@@ -96,7 +98,7 @@ export function createRenderer({ origins, chromiumPath, concurrency = 2, idleMs 
   async function render({ url, label }) {
     if (!allowed(url)) throw new RenderError("that URL is not on an allowed origin");
     return withSlot(async () => {
-      const context = await (await getBrowser()).newContext({ viewport: { width: 794, height: 1123 }, deviceScaleFactor: 2, colorScheme: "light" });
+      const context = await (await getBrowser()).newContext({ viewport: { width: 794, height: 1123 }, deviceScaleFactor: previewScale, colorScheme: "light" });
       try {
         const page = await context.newPage();
         page.setDefaultTimeout(timeoutMs);
