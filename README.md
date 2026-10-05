@@ -105,7 +105,7 @@ Created by **Thakur Ankush Singh (Vaishnavi Consultant)**. Open source under the
 | [`src/status-page.mjs`](src/status-page.mjs) | The status page at `/`: health, current key fingerprint, key history, counters. |
 | [`src/canonical.mjs`](src/canonical.mjs) | Canonical JSON, so every implementation signs exactly the same bytes. |
 | [`src/index.mjs`](src/index.mjs) | Library entry point for applications (`import … from "papertrust"`). |
-| [`bin/papertrust.mjs`](bin/papertrust.mjs) | Command line: `start`, `secret`, `keys`, `rotate`, `rewrap`, `help`. |
+| [`bin/papertrust.mjs`](bin/papertrust.mjs) | Command line: `start`, `secret`, `keys`, `rotate`, `rewrap`, `health`, `help`. |
 
 ### What lives where
 
@@ -167,6 +167,14 @@ Open `http://localhost:4100/`: the status page shows the new identity and its fi
 
 ## Deployment
 
+Papertrust runs anywhere Node.js 24 or Docker runs. Pick the way that fits your setup:
+
+- [Docker](#docker)
+- [Docker Compose](#docker-compose)
+- [Dokploy](#dokploy-step-by-step), step by step
+- [Coolify, CapRover, Portainer and similar](#coolify-caprover-portainer-and-similar)
+- [Without Docker (systemd)](#without-docker-systemd)
+
 ### Requirements
 
 | | Minimum | Comfortable |
@@ -178,17 +186,44 @@ Open `http://localhost:4100/`: the status page shows the new identity and its fi
 
 Chromium starts on the first render and closes after five idle minutes, so an idle instance needs very little memory.
 
+### The two addresses: private and public
+
+This is the one idea to get right. Papertrust can be reached in two ways, and they do different jobs:
+
+| | Private address | Public domain (optional) |
+|---|---|---|
+| Looks like | `http://papertrust:4100` (container or service name + port) | `https://signer.example.com` |
+| Who uses it | **your application** | **you**, in a browser |
+| Goes through | the private Docker network, never the internet | the internet → your reverse proxy (Traefik, nginx, a tunnel) → Papertrust |
+| Can sign and render | **yes** (with the shared secret) | **no**, read-only |
+| Can show the status page, `/health`, `/v1/keys` | yes | yes |
+
+Why the domain is read-only: a reverse proxy adds forwarding headers (`X-Forwarded-For` and similar) to every request it passes on. Papertrust sees them and refuses `/v1/sign` and `/v1/render` with `403 signing is only available on the private network`, **even when the request carries the correct secret**. So even if the secret ever leaked, nobody on the internet could use your instance to sign anything. Your application, calling the private address directly, never goes through the proxy and is unaffected.
+
+**How to use it:** in your application, set the Papertrust URL to the private address. Use the domain only to open the status page when you want to check on things. If you really need signing through a proxy (for example the application runs on another server), set `PAPERTRUST_ALLOW_PROXIED_SIGNING=true` and protect that route well.
+
 ### Network rules
 
-- **Never expose Papertrust to the internet.** Give it no public domain and no published port. Only your application talks to it, over a private network.
-- `PAPERTRUST_ALLOWED_ORIGINS` must be your application's **internal** address as Papertrust sees it (for example `http://myapp:3000`), and your application must call the render endpoint with URLs on that origin.
+- Your application must be able to reach Papertrust's **private address**, normally by being on the same Docker network.
+- `PAPERTRUST_ALLOWED_ORIGINS` must be your application's private address as Papertrust sees it (for example `http://myapp:3000`). Render URLs must start with it.
 - Papertrust makes no outgoing internet connections. While rendering, it blocks every request outside the allowed origins.
+- If you give it a public domain, put a login in front of it (for example HTTP Basic Auth in your proxy), so the status page isn't open to everyone.
 
-### Watching it on a domain (optional)
+### Docker
 
-You may give Papertrust a domain so you can open its status page from anywhere. That is safe by design: requests that arrive through a reverse proxy carry forwarding headers (`X-Forwarded-For` and similar), and Papertrust answers them **read-only**. The status page, `/health` and `/v1/keys` work; `/v1/sign` and `/v1/render` answer `403` even with the right secret. Your application keeps calling the private address, which is unaffected.
+```bash
+docker network create papertrust-net            # skip if your application already has a network
+docker build -t papertrust .
+docker run -d --name papertrust --restart unless-stopped \
+  --network papertrust-net \
+  -e PAPERTRUST_SECRET="<random, 32+ characters>" \
+  -e PAPERTRUST_KEY_PASSWORD="<another random value>" \
+  -e PAPERTRUST_ALLOWED_ORIGINS="http://myapp:3000" \
+  -v papertrust-data:/data \
+  papertrust
+```
 
-Still put a login in front of the domain (for example HTTP Basic Auth in your proxy; Dokploy has it under the application's **Security** tab), so the status page isn't open to everyone.
+Make the random values with `docker run --rm papertrust node bin/papertrust.mjs secret`. Run your application on the same network and point it at `http://papertrust:4100`. Don't use `-p`: no published port is needed.
 
 ### Docker Compose
 
@@ -199,30 +234,98 @@ docker compose up -d
 docker compose logs -f papertrust      # "created a new identity, key …" on the first start
 ```
 
-### Dokploy (and Coolify, CapRover, Portainer…)
+Inside the same Compose project, your application reaches Papertrust at `http://papertrust:4100`.
 
-1. **Create an application** from this Git repository; build type **Dockerfile**.
-2. **Do not add a domain.** The service must stay internal.
-3. **Volume:** mount a persistent volume at `/data`.
-4. **Environment:**
+### Dokploy, step by step
+
+Dokploy puts every application on its shared network (`dokploy-network`), so applications reach each other by their **App Name**, even across projects. The App Name is the grey text under the application's title, for example `myproject-papertrust-ab12cd`.
+
+**1. Create the Papertrust application**
+
+1. In any project, **Create Service → Application**.
+2. **General → Provider:** this repository (GitHub, or Git with `https://github.com/AnkushDiverseCoder/Papertrust.git`), branch `main`, build type **Dockerfile**.
+3. **Environment:**
    ```
    PAPERTRUST_SECRET=<random, 32+ characters>
    PAPERTRUST_KEY_PASSWORD=<another random value>
-   PAPERTRUST_ALLOWED_ORIGINS=http://<your-app-service-name>:<port>
+   PAPERTRUST_ALLOWED_ORIGINS=http://<your app's App Name>:<its port>
    PAPERTRUST_NAME=<Your company> signer
    ```
-5. **Network:** put it on the same Docker network as your application. Your application reaches it at `http://<papertrust-service-name>:4100`.
-6. **Deploy**, then open the logs: the first start prints the new key id.
-7. **Check from your application's container:** `wget -qO- http://<papertrust-service-name>:4100/health` should return `{"ok":true,…}`.
+   Decide these values **before the first deploy** and keep a copy of `PAPERTRUST_KEY_PASSWORD` in a password manager. Changing it later needs `rewrap` (see [Operations](#operations)).
+4. **Advanced → Volumes → Add Volume → Volume Mount:** any volume name (e.g. `papertrust-data`), mount path **`/data`**. Without it, every redeploy would start a brand-new identity.
+5. **Deploy.** The logs show:
+   ```
+   [papertrust] created a new identity, key 7536e7be66cc7137
+   [papertrust] listening on http://127.0.0.1:4100 · rendering on
+   ```
+   Deploy once more: now it must say `opened keystore, current key …` with the **same** key. That proves the volume works.
+
+**2. Optional: a domain for the status page**
+
+1. **Domains → Add Domain:** your host (e.g. `signer.example.com`), path `/`, container port **4100**, HTTPS as you set up your other domains.
+2. **Security → Add Basic Auth:** a username and password, so only you can open the page.
+3. Open the domain: the status page shows **Working**, the key fingerprint and **PDF rendering: On**.
+
+Remember: this domain is read-only (see [the two addresses](#the-two-addresses-private-and-public)). Never use it as your application's Papertrust URL.
+
+**3. Connect your application**
+
+In your application's **Environment**, use Papertrust's **App Name** as the host:
+
+```
+PAPERTRUST_URL=http://<papertrust App Name>:4100
+PAPERTRUST_SECRET=<the same value as on Papertrust>
+```
+
+(Your application may call these differently; VaishnaviPay, for example, uses `SIGNER_URL` and `SIGNER_SHARED_SECRET`.) Redeploy the application.
+
+**Dokploy troubleshooting**
+
+| You see | Do this |
+|---|---|
+| `LOCKED, not signing: The keystore can't be opened with this password` | The keystore on the volume was made with a different password: the environment was edited after the first start. Open the status page for the fix: put the old value back, or run `node bin/papertrust.mjs rewrap` in **Docker → Terminal** with `PAPERTRUST_OLD_KEY_PASSWORD=<old>` (it works while locked), then redeploy. If nothing was signed yet, simply give the `/data` mount a new volume name and redeploy. |
+| `created a new identity` on every deploy | The `/data` volume is missing or its mount path is wrong. |
+| `rendering off` in the logs | `PAPERTRUST_ALLOWED_ORIGINS` is empty or not a plain origin (`http://name:port`, nothing after the port). |
+| Your application says it can't reach Papertrust | Check the App Name and port (`4100`) in the application's URL; both apps must be Dokploy applications (or on `dokploy-network`). |
+| `403 signing is only available on the private network` | Your application is calling the domain. Use `http://<App Name>:4100` instead. |
+
+### Coolify, CapRover, Portainer and similar
+
+The same recipe works on any platform that builds a Dockerfile:
+
+1. Create an application from this repository with the Dockerfile build.
+2. Attach persistent storage at `/data`.
+3. Set the environment variables (see [Settings](#settings)).
+4. Put it on the same internal network as your application, without a public port.
+5. Your application calls it by its internal service name on port 4100.
+
+A public domain is optional and read-only, as above.
+
+### Without Docker (systemd)
+
+On a Linux server with Node.js 24 and Chromium installed:
+
+```bash
+sudo useradd --system --home /opt/papertrust papertrust
+sudo git clone https://github.com/AnkushDiverseCoder/Papertrust.git /opt/papertrust
+cd /opt/papertrust && sudo npm ci --omit=dev
+sudo install -d -o papertrust -m 700 /var/lib/papertrust
+sudo install -m 600 /dev/null /etc/papertrust.env       # then put the settings in it, one VAR=value per line
+sudo cp deploy/papertrust.service /etc/systemd/system/
+sudo systemctl enable --now papertrust
+journalctl -u papertrust -f
+```
+
+The unit file ([`deploy/papertrust.service`](deploy/papertrust.service)) runs it as an unprivileged user, keeps the keystore in `/var/lib/papertrust` and restarts it if it stops. Make it listen only on the private interface (`HOST=127.0.0.1` when the application runs on the same machine).
 
 ### Backups and restore
 
 Back up two things, **separately**:
 
-1. the `/data` volume (it contains `keystore.json`);
+1. the data directory (`/data` volume, or `/var/lib/papertrust`), which holds `keystore.json`;
 2. the keystore password (`PAPERTRUST_KEY_PASSWORD`), for example in a password manager.
 
-One without the other is useless, which is the point. To restore, put `keystore.json` back into `/data`, set the same password, and start. The instance comes back with the same identity, and every application keeps trusting it.
+One without the other is useless, which is the point. To restore, put `keystore.json` back, set the same password, and start. The instance comes back with the same identity, and every application keeps trusting it.
 
 ### Upgrading
 
@@ -230,7 +333,7 @@ Pull the new version and rebuild; the keystore and your applications keep workin
 
 ### Monitoring
 
-- `GET /health` returns `200 {"ok":true,…}` while the service is up; the Docker image has a built-in `HEALTHCHECK`.
+- `GET /health` returns `200 {"ok":true,…}` while the service is up, and `503 {"locked":true,…}` in locked mode. The Docker image's `HEALTHCHECK` uses `papertrust health`, which treats locked mode as alive: restarting wouldn't fix a password.
 - The status page shows counters since start, the last problem (if any) and whether rendering works.
 - Logs go to standard output, one line per event, prefixed with `[papertrust]`.
 
@@ -337,7 +440,9 @@ const genuine = sha === stored.sha256
 
 **Old documents** stay verifiable forever: the public records of all old keys stay in the chain.
 
-**Losing the keystore** (or its password) means the instance can't sign as before. It starts a new identity whose genesis key is *not* endorsed, and applications must consciously trust it again. That is deliberate: a new key that nobody vouched for must never be trusted silently.
+**A changed password** doesn't destroy anything: the instance starts in *locked mode*, signs nothing, and its status page explains how to fix it.
+
+**Losing the keystore** (or its password for good) means the instance can't sign as before. It starts a new identity whose genesis key is *not* endorsed, and applications must consciously trust it again. That is deliberate: a new key that nobody vouched for must never be trusted silently.
 
 **No central party.** There is no certificate authority, no vendor account and no master key in someone's drawer. Each instance is its own authority, and its history of keys is public.
 
@@ -372,8 +477,9 @@ papertrust            # run the service (same as: papertrust start)
 papertrust secret     # print a new random secret
 papertrust keys       # print the key chain and fingerprints
 papertrust rotate     # replace the key now (stop the service first)
-papertrust rewrap     # re-encrypt the keystore after changing its password (stop the service first;
-                      # give the old one in PAPERTRUST_OLD_KEY_PASSWORD or PAPERTRUST_OLD_SECRET)
+papertrust rewrap     # re-encrypt the keystore after changing its password (stop the service first, or run it
+                      # while the service is locked; give the old one in PAPERTRUST_OLD_KEY_PASSWORD or PAPERTRUST_OLD_SECRET)
+papertrust health     # exit 0 while the service answers (used by the Docker health check)
 papertrust help
 ```
 
@@ -390,7 +496,7 @@ Inside Docker: `docker exec -it papertrust node bin/papertrust.mjs keys`.
 | Symptom | Cause and fix |
 |---|---|
 | `PAPERTRUST_SECRET must be set…` on start | The secret is missing or shorter than 32 characters. Make one with `papertrust secret`. |
-| `The keystore can't be opened with this password` | The keystore password changed (or the secret it was derived from). Put the old value back, or `rewrap`. |
+| `LOCKED, not signing: The keystore can't be opened with this password` | The keystore password changed (or the secret it was derived from). The instance stays up in **locked mode** and its status page explains the fix: put the old value back, or `rewrap` (allowed while locked), then restart. |
 | `this Node.js can't make ML-DSA-65 signatures` | Use Node.js 24 or newer. The Docker image already does. |
 | `/v1/render` answers `503 rendering is off` | Set `PAPERTRUST_ALLOWED_ORIGINS`, and make sure Chromium is installed (status page shows "Chromium found"). |
 | `that URL is not on an allowed origin` | The render URL must start with one of the allowed origins exactly (scheme, host and port). |
@@ -460,11 +566,12 @@ Papertrust/
 │   ├── keystore.mjs            encrypted keystore file
 │   ├── render.mjs              Chromium rendering
 │   ├── config.mjs              settings
-│   ├── status-page.mjs         status page
+│   ├── status-page.mjs         status page and locked-mode page
 │   ├── canonical.mjs           canonical JSON
 │   └── index.mjs               library exports
 ├── test/                       node:test suites (crypto, keystore, server incl. a real render)
 ├── Dockerfile                  production image (Node 24 + Chromium, non-root, health check)
+├── deploy/papertrust.service  systemd unit for servers without Docker
 ├── docker-compose.example.yml
 ├── .env.example
 ├── LICENSE                     Apache License 2.0

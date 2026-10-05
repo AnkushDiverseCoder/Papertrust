@@ -13,6 +13,35 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const day = (iso) => { const d = new Date(iso); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 const n = (v) => Number(v).toLocaleString("en-US");
 
+// One stylesheet for every page: light by default, dark when the visitor's system prefers it.
+const STYLE = `
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb; --accent:#0e9f6e; --accent-soft:#e7f7f0; --warn:#b45309; --warn-soft:#fef3c7; --code:#f3f4f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#171a21; --text:#e5e7eb; --muted:#9ca3af; --line:#272b35; --accent:#34d399; --accent-soft:#0f2a20; --warn:#fbbf24; --warn-soft:#2d2410; --code:#20242d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:32px 16px 48px; }
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:20px; }
+  .brand { display:flex; align-items:center; gap:12px; flex:1 1 260px; min-width:0; }
+  .logo { flex:none; width:40px; height:40px; border-radius:10px; background:var(--accent); color:#fff; display:grid; place-items:center; font-weight:700; }
+  h1 { font-size:22px; margin:0; } h2 { font-size:15px; margin:0 0 12px; }
+  .sub { color:var(--muted); font-size:13px; }
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .stat { font-size:26px; font-weight:650; } .label { color:var(--muted); font-size:13px; }
+  .chip { display:inline-block; font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; }
+  .chip.ok { background:var(--accent-soft); color:var(--accent); } .chip.warn { background:var(--warn-soft); color:var(--warn); }
+  code { font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--code); padding:1px 5px; border-radius:5px; }
+  .fp { font:14px ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.04em; word-break:break-word; background:var(--code); padding:10px 12px; border-radius:8px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; } td, th { text-align:left; padding:8px 6px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:13px; border-top:0; }
+  .scroll { overflow-x:auto; }
+  ul { margin:0; padding-left:18px; } li { margin:4px 0; }
+  footer { color:var(--muted); font-size:13px; text-align:center; margin-top:24px; }
+  a { color:var(--accent); }
+`;
+
 function duration(ms) {
   const m = Math.floor(ms / 60_000), h = Math.floor(m / 60), d = Math.floor(h / 24);
   if (d) return `${d} day${d === 1 ? "" : "s"} ${h % 24} h`;
@@ -46,33 +75,7 @@ export function statusPage(s) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${esc(s.name)} · status</title>
-<style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb; --accent:#0e9f6e; --accent-soft:#e7f7f0; --warn:#b45309; --warn-soft:#fef3c7; --code:#f3f4f6; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#0f1115; --card:#171a21; --text:#e5e7eb; --muted:#9ca3af; --line:#272b35; --accent:#34d399; --accent-soft:#0f2a20; --warn:#fbbf24; --warn-soft:#2d2410; --code:#20242d; }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
-  main { max-width:880px; margin:0 auto; padding:32px 16px 48px; }
-  header { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:20px; }
-  .brand { display:flex; align-items:center; gap:12px; flex:1 1 260px; min-width:0; }
-  .logo { flex:none; width:40px; height:40px; border-radius:10px; background:var(--accent); color:#fff; display:grid; place-items:center; font-weight:700; }
-  h1 { font-size:22px; margin:0; } h2 { font-size:15px; margin:0 0 12px; }
-  .sub { color:var(--muted); font-size:13px; }
-  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
-  .stat { font-size:26px; font-weight:650; } .label { color:var(--muted); font-size:13px; }
-  .chip { display:inline-block; font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; }
-  .chip.ok { background:var(--accent-soft); color:var(--accent); } .chip.warn { background:var(--warn-soft); color:var(--warn); }
-  code { font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--code); padding:1px 5px; border-radius:5px; }
-  .fp { font:14px ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.04em; word-break:break-word; background:var(--code); padding:10px 12px; border-radius:8px; }
-  table { width:100%; border-collapse:collapse; font-size:14px; } td, th { text-align:left; padding:8px 6px; border-top:1px solid var(--line); vertical-align:top; }
-  th { color:var(--muted); font-weight:500; font-size:13px; border-top:0; }
-  .scroll { overflow-x:auto; }
-  ul { margin:0; padding-left:18px; } li { margin:4px 0; }
-  footer { color:var(--muted); font-size:13px; text-align:center; margin-top:24px; }
-  a { color:var(--accent); }
-</style>
+<style>${STYLE}</style>
 </head>
 <body>
 <main>
@@ -138,6 +141,55 @@ export function statusPage(s) {
     <ul>
       <li><code>GET /health</code> status as JSON · <code>GET /v1/keys</code> the public key chain</li>
       <li><code>POST /v1/sign</code> sign a text · <code>POST /v1/render</code> render a page to a signed PDF (both need the shared secret)</li>
+    </ul>
+  </div>
+
+  <footer>Papertrust · created by Thakur Ankush Singh (Vaishnavi Consultant) · open source under the Apache License 2.0</footer>
+</main>
+</body>
+</html>`;
+}
+
+/**
+ * The page shown when the keystore can't be opened (usually because its password changed). The service keeps
+ * running so this explanation is visible, but it signs nothing until the problem is fixed and it restarts.
+ * @param {{ name: string, version: string, problem: string, dataDir: string }} s
+ */
+export function lockedPage(s) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${esc(s.name)} · locked</title>
+<style>${STYLE}</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <div class="logo">P</div>
+      <div style="min-width:0">
+        <h1>${esc(s.name)}</h1>
+        <div class="sub">Papertrust ${esc(s.version)}</div>
+      </div>
+    </div>
+    <div><span class="chip warn">Locked: not signing</span></div>
+  </header>
+
+  <div class="card" style="border-color:var(--warn)">
+    <h2>The keystore can't be opened</h2>
+    <p style="margin-top:0">${esc(s.problem)}</p>
+    <p class="label" style="margin-bottom:0">Nothing is signed while the instance is locked. Your applications show their documents as "not signed yet" and sign them once this is fixed.</p>
+  </div>
+
+  <div class="card">
+    <h2>How to fix it</h2>
+    <ul>
+      <li><b>The password was changed by mistake?</b> Put the previous <code>PAPERTRUST_KEY_PASSWORD</code> back (or the previous <code>PAPERTRUST_SECRET</code>, if you never set a key password) and restart. Everything continues as before.</li>
+      <li><b>You want the new password?</b> Stop the service and run <code>papertrust rewrap</code> with the old password in <code>PAPERTRUST_OLD_KEY_PASSWORD</code> (or <code>PAPERTRUST_OLD_SECRET</code>), then start it again.</li>
+      <li><b>You lost the old password?</b> The old keys can't be recovered. Start with an empty data directory (<code>${esc(s.dataDir)}</code>; on Dokploy, give the <code>/data</code> mount a new volume name) to create a new identity, and confirm the new key in each application that relies on this instance. Documents signed before stay verifiable there.</li>
     </ul>
   </div>
 

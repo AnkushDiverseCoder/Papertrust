@@ -18,7 +18,8 @@ import { fingerprint, groupFingerprint, postQuantumAvailable } from "../src/sign
  *   secret   print a new random secret (for PAPERTRUST_SECRET or PAPERTRUST_KEY_PASSWORD)
  *   keys     print the public key chain with fingerprints
  *   rotate   replace the signing key now (the service must be stopped)
- *   rewrap   re-encrypt the keystore after changing its password (the service must be stopped)
+ *   rewrap   re-encrypt the keystore after changing its password (the service must be stopped, or locked)
+ *   health   exit 0 while the local service answers (also in locked mode), 1 otherwise; used by Docker
  */
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -30,11 +31,16 @@ function fail(message) {
   process.exit(1);
 }
 
-/** Commands that change the keystore must not run while the service has it open. */
-function refuseIfRunning(dataDir) {
+/**
+ * Commands that change the keystore must not run while the service has it open. A service in locked mode holds no
+ * keys, so `rewrap` may run next to it (handy inside a container, where the service can't be stopped on its own).
+ */
+function refuseIfRunning(dataDir, { allowLocked = false } = {}) {
   const file = path.join(dataDir, PID_FILE);
   if (!fs.existsSync(file)) return;
-  const pid = Number(fs.readFileSync(file, "utf8"));
+  const [pidText, mode] = fs.readFileSync(file, "utf8").trim().split(" ");
+  const pid = Number(pidText);
+  if (allowLocked && mode === "locked") return;
   let running = true;
   try {
     process.kill(pid, 0); // signal 0 only checks that the process exists
@@ -57,7 +63,7 @@ async function start() {
   if (!postQuantumAvailable()) fail("this Node.js can't make ML-DSA-65 signatures. Use Node.js 24 or newer (OpenSSL 3.5+).");
   const config = loadConfig();
   const app = await startPapertrust(config, { version });
-  fs.writeFileSync(path.join(config.dataDir, PID_FILE), String(process.pid));
+  fs.writeFileSync(path.join(config.dataDir, PID_FILE), `${process.pid}${app.locked ? " locked" : ""}`);
   const stop = async (signal) => {
     console.log(`[papertrust] ${signal}: shutting down`);
     fs.rmSync(path.join(config.dataDir, PID_FILE), { force: true });
@@ -88,24 +94,36 @@ const commands = {
   rewrap() {
     // the NEW password comes from the normal settings; the OLD one from PAPERTRUST_OLD_KEY_PASSWORD or PAPERTRUST_OLD_SECRET
     const config = loadConfig();
-    refuseIfRunning(config.dataDir);
+    refuseIfRunning(config.dataDir, { allowLocked: true });
     const oldPassword = process.env.PAPERTRUST_OLD_KEY_PASSWORD
       || (process.env.PAPERTRUST_OLD_SECRET ? `papertrust-keystore:${process.env.PAPERTRUST_OLD_SECRET}` : "");
     if (!oldPassword) fail("set PAPERTRUST_OLD_KEY_PASSWORD (or PAPERTRUST_OLD_SECRET) to the value the keystore was made with");
     const { keystore } = Keystore.open({ dir: config.dataDir, password: oldPassword });
     keystore.rewrap(config.keyPassword);
-    console.log("The keystore is now encrypted with the current password.");
+    console.log("The keystore is now encrypted with the current password. Restart the service to use it.");
+  },
+  async health() {
+    // only the port is needed, so this works even when other settings are missing
+    const port = Number(process.env.PORT) || 4100;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(4000) });
+      const body = await res.json().catch(() => ({}));
+      process.exit(res.ok || body.locked ? 0 : 1);
+    } catch {
+      process.exit(1);
+    }
   },
   help() {
     console.log(`Papertrust ${version}: sign documents and prove they are unchanged.
 
-Usage: papertrust [start | secret | keys | rotate | rewrap | help]
+Usage: papertrust [start | secret | keys | rotate | rewrap | health | help]
 
   start    run the service (default)
   secret   print a new random secret
   keys     print the public key chain with fingerprints
   rotate   replace the signing key now (stop the service first)
-  rewrap   re-encrypt the keystore with a new password (stop the service first)
+  rewrap   re-encrypt the keystore with a new password (stop the service first, or run it while locked)
+  health   exit 0 while the service answers (used by the Docker health check)
 
 Settings are environment variables; see README.md.`);
   },

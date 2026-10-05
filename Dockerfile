@@ -24,7 +24,9 @@ USER node
 VOLUME /data
 EXPOSE 4100
 
+# "papertrust health" passes while the service answers, including in locked mode (see README): restarting a
+# locked instance would not fix its password, and it keeps serving the page that explains how to.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4100)+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+  CMD ["node", "bin/papertrust.mjs", "health"]
 
 CMD ["node", "bin/papertrust.mjs", "start"]

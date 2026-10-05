@@ -4,10 +4,10 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import { createAuthenticator } from "./auth.mjs";
-import { Keystore } from "./keystore.mjs";
+import { Keystore, KeystoreError } from "./keystore.mjs";
 import { createRenderer, RenderError } from "./render.mjs";
 import { PURPOSE_RE, RESERVED_PURPOSES } from "./signatures.mjs";
-import { statusPage } from "./status-page.mjs";
+import { lockedPage, statusPage } from "./status-page.mjs";
 
 /**
  * The Papertrust HTTP service.
@@ -36,13 +36,46 @@ const PROXY_HEADERS = ["x-forwarded-for", "x-forwarded-host", "x-forwarded-proto
 export const cameThroughProxy = (headers) => PROXY_HEADERS.some((h) => headers[h] !== undefined);
 
 /**
+ * Locked mode: the keystore exists but can't be opened. Instead of crashing (and restarting forever), serve a page
+ * that explains the problem; /health answers 503 and every other request is refused.
+ */
+async function startLocked(config, problem, { version, log }) {
+  const server = http.createServer((req, res) => {
+    const pathOnly = (req.url ?? "/").split("?")[0];
+    if (req.method === "GET" && pathOnly === "/") {
+      res.writeHead(503, {
+        "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff",
+        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      });
+      return res.end(lockedPage({ name: config.name, version, problem, dataDir: config.dataDir }));
+    }
+    const body = JSON.stringify({ ok: false, locked: true, error: `the keystore is locked: ${problem}` });
+    res.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+    res.end(body);
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(config.port, config.host, resolve); });
+  const address = server.address();
+  const url = `http://${config.host === "0.0.0.0" ? "127.0.0.1" : config.host}:${typeof address === "object" && address ? address.port : config.port}`;
+  log(`listening on ${url} in locked mode (open the status page for how to fix it)`);
+  return { server, keystore: null, url, locked: true, close: () => new Promise((resolve) => { server.close(() => resolve()); server.closeIdleConnections(); }) };
+}
+
+/**
  * Start everything: open (or create) the keystore, prepare the renderer, listen.
  * @param {ReturnType<import("./config.mjs").loadConfig>} config
  * @param {{ version?: string, log?: (msg: string) => void }} [options]
  * @returns {Promise<{ server: http.Server, keystore: Keystore, url: string, close: () => Promise<void> }>}
  */
 export async function startPapertrust(config, { version = "dev", log = (m) => console.log(`[papertrust] ${m}`) } = {}) {
-  const { keystore, created } = Keystore.open({ dir: config.dataDir, password: config.keyPassword });
+  let opened;
+  try {
+    opened = Keystore.open({ dir: config.dataDir, password: config.keyPassword });
+  } catch (e) {
+    if (!(e instanceof KeystoreError)) throw e;
+    log(`LOCKED, not signing: ${e.message}`);
+    return startLocked(config, e.message, { version, log });
+  }
+  const { keystore, created } = opened;
   log(created ? `created a new identity, key ${keystore.current().record.kid}` : `opened keystore, current key ${keystore.current().record.kid}`);
 
   const renderer = createRenderer({ origins: config.origins, chromiumPath: config.chromiumPath, concurrency: config.concurrency });

@@ -8,6 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { verifyChain } from "../src/keychain.mjs";
 import { Keystore, KeystoreError } from "../src/keystore.mjs";
+import { startPapertrust } from "../src/server.mjs";
 import { verifyPair } from "../src/signatures.mjs";
 
 const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "papertrust-ks-"));
@@ -72,4 +73,27 @@ test("rewrap: re-encrypt with a new password", () => {
   keystore.rewrap("new");
   assert.throws(() => Keystore.open({ dir, password: "old" }), KeystoreError);
   assert.equal(Keystore.open({ dir, password: "new" }).keystore.current().record.kid, kid);
+});
+
+test("a keystore with a different password starts in locked mode, explaining how to fix it", async () => {
+  const dir = tempDir();
+  Keystore.open({ dir, password: "first password" });
+  const config = { secret: "s".repeat(40), origins: [], keyPassword: "changed password", keyPasswordSeparate: true, dataDir: dir, rotateDays: 365,
+    name: "Locked test", concurrency: 1, chromiumPath: null, port: 0, host: "127.0.0.1" };
+  const pt = await startPapertrust(config, { version: "test", log: () => {} });
+  try {
+    assert.equal(pt.locked, true);
+    const page = await fetch(pt.url + "/");
+    assert.equal(page.status, 503);
+    const html = await page.text();
+    assert.match(html, /can't be opened/);
+    assert.match(html, /papertrust rewrap/);
+    const health = await fetch(pt.url + "/health");
+    assert.equal(health.status, 503);
+    assert.equal((await health.json()).locked, true);
+    const sign = await fetch(pt.url + "/v1/sign", { method: "POST", body: "{}" });
+    assert.equal(sign.status, 503);
+  } finally {
+    await pt.close();
+  }
 });

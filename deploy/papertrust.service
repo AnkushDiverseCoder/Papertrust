@@ -1,0 +1,33 @@
+# Papertrust as a systemd service (Linux, without Docker).
+# Copyright 2026 Thakur Ankush Singh (Vaishnavi Consultant). Licensed under the Apache License 2.0.
+#
+# Install: see "Without Docker (systemd)" in README.md. Settings go in /etc/papertrust.env (mode 600), e.g.
+#   PAPERTRUST_SECRET=...
+#   PAPERTRUST_KEY_PASSWORD=...
+#   PAPERTRUST_ALLOWED_ORIGINS=http://127.0.0.1:3000
+#   PAPERTRUST_DATA_DIR=/var/lib/papertrust
+#   HOST=127.0.0.1
+
+[Unit]
+Description=Papertrust document signing
+After=network.target
+
+[Service]
+Type=simple
+User=papertrust
+Group=papertrust
+WorkingDirectory=/opt/papertrust
+EnvironmentFile=/etc/papertrust.env
+ExecStart=/usr/bin/node bin/papertrust.mjs start
+Restart=on-failure
+RestartSec=5
+
+# hardening: the service only needs its own data directory
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/papertrust
+
+[Install]
+WantedBy=multi-user.target
