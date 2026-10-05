@@ -1,0 +1,23 @@
+# Example: Papertrust next to your application on one Docker network.
+# Copy to docker-compose.yml, put the two secrets in a .env file next to it, then: docker compose up -d
+services:
+  papertrust:
+    build: .
+    restart: unless-stopped
+    environment:
+      PAPERTRUST_SECRET: ${PAPERTRUST_SECRET}               # same value in your application
+      PAPERTRUST_KEY_PASSWORD: ${PAPERTRUST_KEY_PASSWORD}   # protects the keystore file; back it up safely
+      PAPERTRUST_ALLOWED_ORIGINS: http://myapp:3000         # your application's address on this network
+      PAPERTRUST_NAME: My company signer
+    volumes:
+      - papertrust-data:/data
+    # No "ports:" on purpose: only containers on the same network can reach Papertrust.
+
+  # myapp:
+  #   image: your-application
+  #   environment:
+  #     PAPERTRUST_URL: http://papertrust:4100
+  #     PAPERTRUST_SECRET: ${PAPERTRUST_SECRET}
+
+volumes:
+  papertrust-data:
