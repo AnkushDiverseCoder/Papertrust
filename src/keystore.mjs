@@ -19,6 +19,10 @@ import { generateKeys, signPair } from "./signatures.mjs";
  *     "data":   <base64 ciphertext>
  *   }
  *
+ * Next to the encrypted part the file keeps a small PUBLIC summary ("public": the key ids, when each key was made,
+ * when the file was last saved). It holds nothing secret and is only used to describe a keystore that can't be
+ * opened, so the operator can tell which keystore it is.
+ *
  * The decrypted data is { keys: [{ record, privateKeys?: { ed25519, mldsa65 } }] }, oldest first. Only the
  * CURRENT key keeps its private keys (PKCS#8 PEM). When a key is rotated out, its private keys are deleted
  * and only its public record stays, so a stolen old backup can't sign anything new once rotation happened.
@@ -28,10 +32,43 @@ import { generateKeys, signPair } from "./signatures.mjs";
  * leaves a half-written keystore.
  */
 
-const FILE = "keystore.json";
 const SCRYPT = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
-export class KeystoreError extends Error {}
+/** A keystore problem. `details` describes the keystore file that was found (when there is one). */
+export class KeystoreError extends Error {
+  constructor(message, details = null) {
+    super(message);
+    /** @type {{ file: string, modifiedAt: string, keys: { kid: string, createdAt: string }[] | null } | null} */
+    this.details = details;
+  }
+}
+
+export const KEYSTORE_FILE = "keystore.json";
+
+/** What can be said about a keystore file without its password. */
+export function describeKeystoreFile(dir) {
+  const file = path.join(dir, KEYSTORE_FILE);
+  try {
+    const stat = fs.statSync(file);
+    let keys = null;
+    try { keys = JSON.parse(fs.readFileSync(file, "utf8")).public?.keys ?? null; } catch { /* unreadable: just the date */ }
+    return { file, modifiedAt: stat.mtime.toISOString(), keys };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Move the keystore aside (never deleted) so the next start creates a new identity. Returns the new file name.
+ * The old file stays next to it: with its password it can still be restored later.
+ */
+export function moveKeystoreAside(dir) {
+  const file = path.join(dir, KEYSTORE_FILE);
+  if (!fs.existsSync(file)) return null;
+  const aside = path.join(dir, `keystore.replaced-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  fs.renameSync(file, aside);
+  return aside;
+}
 
 function deriveKey(password, salt, kdf = SCRYPT) {
   return crypto.scryptSync(password, salt, 32, { N: kdf.N, r: kdf.r, p: kdf.p, maxmem: SCRYPT.maxmem });
@@ -48,9 +85,9 @@ function encrypt(password, plain) {
   };
 }
 
-function decrypt(password, file) {
+function decrypt(password, file, dir) {
   if (file?.format !== "papertrust-keystore" || file.v !== 1 || file.kdf?.name !== "scrypt" || file.cipher !== "aes-256-gcm") {
-    throw new KeystoreError("keystore.json is not a Papertrust keystore (or is from a newer version)");
+    throw new KeystoreError("keystore.json is not a Papertrust keystore (or is from a newer version)", describeKeystoreFile(dir));
   }
   try {
     const decipher = crypto.createDecipheriv("aes-256-gcm", deriveKey(password, Buffer.from(file.kdf.salt, "base64"), file.kdf), Buffer.from(file.iv, "base64"));
@@ -60,6 +97,7 @@ function decrypt(password, file) {
     throw new KeystoreError(
       "The keystore can't be opened with this password. If PAPERTRUST_KEY_PASSWORD or PAPERTRUST_SECRET was changed, "
       + "put the old value back, or re-encrypt the keystore with `papertrust rewrap` (see README).",
+      describeKeystoreFile(dir),
     );
   }
 }
@@ -89,7 +127,7 @@ export class Keystore {
   static open({ dir, password }) {
     if (!password) throw new KeystoreError("a keystore password is required");
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const file = path.join(dir, FILE);
+    const file = path.join(dir, KEYSTORE_FILE);
     if (!fs.existsSync(file)) {
       const ks = new Keystore(dir, password, []);
       ks.#addKey();
@@ -101,7 +139,7 @@ export class Keystore {
     } catch {
       throw new KeystoreError(`${file} can't be read as JSON. Restore it from a backup; do not delete it unless you mean to start a brand-new identity.`);
     }
-    const plain = decrypt(password, parsed);
+    const plain = decrypt(password, parsed, dir);
     const entries = (plain.keys ?? []).map((k) => ({
       record: k.record,
       privateKeys: k.privateKeys ? { ed25519: loadPrivate(k.privateKeys.ed25519), mldsa65: loadPrivate(k.privateKeys.mldsa65) } : undefined,
@@ -172,6 +210,7 @@ export class Keystore {
         ...(e.privateKeys ? { privateKeys: { ed25519: exportPrivate(e.privateKeys.ed25519), mldsa65: exportPrivate(e.privateKeys.mldsa65) } } : {}),
       })),
     };
-    writeAtomic(path.join(this.dir, FILE), JSON.stringify(encrypt(this.password, plain), null, 2));
+    const summary = { keys: this.entries.map((e) => ({ kid: e.record.kid, createdAt: e.record.createdAt })), savedAt: new Date().toISOString() };
+    writeAtomic(path.join(this.dir, KEYSTORE_FILE), JSON.stringify({ ...encrypt(this.password, plain), public: summary }, null, 2));
   }
 }

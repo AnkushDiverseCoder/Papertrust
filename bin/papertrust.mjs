@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ConfigError, loadConfig } from "../src/config.mjs";
-import { Keystore, KeystoreError } from "../src/keystore.mjs";
+import { Keystore, KeystoreError, moveKeystoreAside } from "../src/keystore.mjs";
 import { startPapertrust } from "../src/server.mjs";
 import { fingerprint, groupFingerprint, postQuantumAvailable } from "../src/signatures.mjs";
 
@@ -20,6 +20,7 @@ import { fingerprint, groupFingerprint, postQuantumAvailable } from "../src/sign
  *   rotate   replace the signing key now (the service must be stopped)
  *   rewrap   re-encrypt the keystore after changing its password (the service must be stopped, or locked)
  *   health   exit 0 while the local service answers (also in locked mode), 1 otherwise; used by Docker
+ *   new-identity  move the keystore aside so the next start makes a new identity (stopped or locked service only)
  */
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -102,6 +103,13 @@ const commands = {
     keystore.rewrap(config.keyPassword);
     console.log("The keystore is now encrypted with the current password. Restart the service to use it.");
   },
+  "new-identity"() {
+    const config = loadConfig();
+    refuseIfRunning(config.dataDir, { allowLocked: true });
+    const aside = moveKeystoreAside(config.dataDir);
+    if (!aside) { console.log("There is no keystore yet: the next start creates a new identity anyway."); return; }
+    console.log(`The old keystore was moved to ${aside} (kept, not deleted).\nRestart the service: it will create a new identity and print its key id.`);
+  },
   async health() {
     // only the port is needed, so this works even when other settings are missing
     const port = Number(process.env.PORT) || 4100;
@@ -116,13 +124,14 @@ const commands = {
   help() {
     console.log(`Papertrust ${version}: sign documents and prove they are unchanged.
 
-Usage: papertrust [start | secret | keys | rotate | rewrap | health | help]
+Usage: papertrust [start | secret | keys | rotate | rewrap | new-identity | health | help]
 
   start    run the service (default)
   secret   print a new random secret
   keys     print the public key chain with fingerprints
   rotate   replace the signing key now (stop the service first)
   rewrap   re-encrypt the keystore with a new password (stop the service first, or run it while locked)
+  new-identity  move the keystore aside; the next start makes a new identity (stop the service first, or run it while locked)
   health   exit 0 while the service answers (used by the Docker health check)
 
 Settings are environment variables; see README.md.`);

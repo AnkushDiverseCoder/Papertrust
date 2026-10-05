@@ -39,7 +39,7 @@ export const cameThroughProxy = (headers) => PROXY_HEADERS.some((h) => headers[h
  * Locked mode: the keystore exists but can't be opened. Instead of crashing (and restarting forever), serve a page
  * that explains the problem; /health answers 503 and every other request is refused.
  */
-async function startLocked(config, problem, { version, log }) {
+async function startLocked(config, problem, details, { version, log }) {
   const server = http.createServer((req, res) => {
     const pathOnly = (req.url ?? "/").split("?")[0];
     if (req.method === "GET" && pathOnly === "/") {
@@ -47,7 +47,7 @@ async function startLocked(config, problem, { version, log }) {
         "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff",
         "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       });
-      return res.end(lockedPage({ name: config.name, version, problem, dataDir: config.dataDir }));
+      return res.end(lockedPage({ name: config.name, version, problem, dataDir: config.dataDir, details }));
     }
     const body = JSON.stringify({ ok: false, locked: true, error: `the keystore is locked: ${problem}` });
     res.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -73,7 +73,7 @@ export async function startPapertrust(config, { version = "dev", log = (m) => co
   } catch (e) {
     if (!(e instanceof KeystoreError)) throw e;
     log(`LOCKED, not signing: ${e.message}`);
-    return startLocked(config, e.message, { version, log });
+    return startLocked(config, e.message, e.details, { version, log });
   }
   const { keystore, created } = opened;
   log(created ? `created a new identity, key ${keystore.current().record.kid}` : `opened keystore, current key ${keystore.current().record.kid}`);

@@ -105,7 +105,7 @@ Created by **Thakur Ankush Singh (Vaishnavi Consultant)**. Open source under the
 | [`src/status-page.mjs`](src/status-page.mjs) | The status page at `/`: health, current key fingerprint, key history, counters. |
 | [`src/canonical.mjs`](src/canonical.mjs) | Canonical JSON, so every implementation signs exactly the same bytes. |
 | [`src/index.mjs`](src/index.mjs) | Library entry point for applications (`import … from "papertrust"`). |
-| [`bin/papertrust.mjs`](bin/papertrust.mjs) | Command line: `start`, `secret`, `keys`, `rotate`, `rewrap`, `health`, `help`. |
+| [`bin/papertrust.mjs`](bin/papertrust.mjs) | Command line: `start`, `secret`, `keys`, `rotate`, `rewrap`, `new-identity`, `health`, `help`. |
 
 ### What lives where
 
@@ -283,7 +283,8 @@ PAPERTRUST_SECRET=<the same value as on Papertrust>
 
 | You see | Do this |
 |---|---|
-| `LOCKED, not signing: The keystore can't be opened with this password` | The keystore on the volume was made with a different password: the environment was edited after the first start. Open the status page for the fix: put the old value back, or run `node bin/papertrust.mjs rewrap` in **Docker → Terminal** with `PAPERTRUST_OLD_KEY_PASSWORD=<old>` (it works while locked), then redeploy. If nothing was signed yet, simply give the `/data` mount a new volume name and redeploy. |
+| `LOCKED, not signing: The keystore can't be opened with this password` | The keystore on the volume was made with a different password: the environment was edited after the first start. Open the status page: it shows which keystore it found and when it was made. Then either put the old value back, or run `node bin/papertrust.mjs rewrap` with `PAPERTRUST_OLD_KEY_PASSWORD=<old>` in **Open Terminal** (works while locked), or, if nothing important was signed yet, run `node bin/papertrust.mjs new-identity` there. Then **Deploy** again. |
+| Still locked after deleting the volume | Deleting a mount in Dokploy does **not** delete the Docker volume. Re-adding a mount with the same name brings the old keystore back. Use `new-identity` (above) or a volume name you never used before. |
 | `created a new identity` on every deploy | The `/data` volume is missing or its mount path is wrong. |
 | `rendering off` in the logs | `PAPERTRUST_ALLOWED_ORIGINS` is empty or not a plain origin (`http://name:port`, nothing after the port). |
 | Your application says it can't reach Papertrust | Check the App Name and port (`4100`) in the application's URL; both apps must be Dokploy applications (or on `dokploy-network`). |
@@ -479,6 +480,8 @@ papertrust keys       # print the key chain and fingerprints
 papertrust rotate     # replace the key now (stop the service first)
 papertrust rewrap     # re-encrypt the keystore after changing its password (stop the service first, or run it
                       # while the service is locked; give the old one in PAPERTRUST_OLD_KEY_PASSWORD or PAPERTRUST_OLD_SECRET)
+papertrust new-identity  # move the keystore aside (kept) so the next start makes a new identity
+                         # (stop the service first, or run it while locked)
 papertrust health     # exit 0 while the service answers (used by the Docker health check)
 papertrust help
 ```
@@ -557,7 +560,7 @@ Errors are `{ error }` with status `400` (bad input), `401` (authentication), `4
 
 ```
 Papertrust/
-├── bin/papertrust.mjs          command line (start, secret, keys, rotate, rewrap, help)
+├── bin/papertrust.mjs          command line (start, secret, keys, rotate, rewrap, new-identity, health, help)
 ├── src/
 │   ├── server.mjs              HTTP service
 │   ├── auth.mjs                request authentication

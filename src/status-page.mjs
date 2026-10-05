@@ -153,9 +153,20 @@ export function statusPage(s) {
 /**
  * The page shown when the keystore can't be opened (usually because its password changed). The service keeps
  * running so this explanation is visible, but it signs nothing until the problem is fixed and it restarts.
- * @param {{ name: string, version: string, problem: string, dataDir: string }} s
+ * @param {{ name: string, version: string, problem: string, dataDir: string,
+ *           details: { file: string, modifiedAt: string, keys: { kid: string, createdAt: string }[] | null } | null }} s
  */
 export function lockedPage(s) {
+  const d = s.details;
+  const found = d ? `
+  <div class="card">
+    <h2>The keystore it found</h2>
+    <ul>
+      <li>File <code>${esc(d.file)}</code>, last saved ${esc(d.modifiedAt.replace("T", " ").slice(0, 16))} UTC</li>
+      ${d.keys ? d.keys.map((k) => `<li>Key <code>${esc(k.kid)}</code>, made ${esc(k.createdAt.replace("T", " ").slice(0, 16))} UTC</li>`).join("") : "<li>Made by an older Papertrust version, which doesn't record its key ids outside the encrypted part.</li>"}
+    </ul>
+    <p class="label" style="margin-bottom:0">If this is older than you expected, the data volume you think is new still holds an old keystore. On Dokploy, deleting a mount does not delete the Docker volume: adding a mount with the same name brings the old data back.</p>
+  </div>` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -184,12 +195,13 @@ export function lockedPage(s) {
     <p class="label" style="margin-bottom:0">Nothing is signed while the instance is locked. Your applications show their documents as "not signed yet" and sign them once this is fixed.</p>
   </div>
 
+${found}
   <div class="card">
     <h2>How to fix it</h2>
     <ul>
       <li><b>The password was changed by mistake?</b> Put the previous <code>PAPERTRUST_KEY_PASSWORD</code> back (or the previous <code>PAPERTRUST_SECRET</code>, if you never set a key password) and restart. Everything continues as before.</li>
       <li><b>You want the new password?</b> Stop the service and run <code>papertrust rewrap</code> with the old password in <code>PAPERTRUST_OLD_KEY_PASSWORD</code> (or <code>PAPERTRUST_OLD_SECRET</code>), then start it again.</li>
-      <li><b>You lost the old password?</b> The old keys can't be recovered. Start with an empty data directory (<code>${esc(s.dataDir)}</code>; on Dokploy, give the <code>/data</code> mount a new volume name) to create a new identity, and confirm the new key in each application that relies on this instance. Documents signed before stay verifiable there.</li>
+      <li><b>You lost the old password, or nothing was signed with this keystore yet?</b> Start a new identity: open a terminal in the container (Dokploy: <b>Open Terminal</b>) and run <code>node bin/papertrust.mjs new-identity</code>, then restart (redeploy). The old file is kept beside it, not deleted. Applications that relied on the old key must confirm the new one; documents signed before stay verifiable there.</li>
     </ul>
   </div>
 

@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { verifyChain } from "../src/keychain.mjs";
-import { Keystore, KeystoreError } from "../src/keystore.mjs";
+import { Keystore, KeystoreError, moveKeystoreAside } from "../src/keystore.mjs";
 import { startPapertrust } from "../src/server.mjs";
 import { verifyPair } from "../src/signatures.mjs";
 
@@ -88,6 +88,8 @@ test("a keystore with a different password starts in locked mode, explaining how
     const html = await page.text();
     assert.match(html, /can't be opened/);
     assert.match(html, /papertrust rewrap/);
+    assert.match(html, /new-identity/);
+    assert.match(html, /The keystore it found/, "describes the keystore it found");
     const health = await fetch(pt.url + "/health");
     assert.equal(health.status, 503);
     assert.equal((await health.json()).locked, true);
@@ -96,4 +98,22 @@ test("a keystore with a different password starts in locked mode, explaining how
   } finally {
     await pt.close();
   }
+});
+
+test("new-identity: the old keystore is moved aside (kept) and the next open makes a new identity", () => {
+  const dir = tempDir();
+  const old = Keystore.open({ dir, password: "first" }).keystore.current().record.kid;
+  const aside = moveKeystoreAside(dir);
+  assert.ok(aside && fs.existsSync(aside), "old file kept");
+  const fresh = Keystore.open({ dir, password: "second" });
+  assert.equal(fresh.created, true);
+  assert.notEqual(fresh.keystore.current().record.kid, old);
+});
+
+test("the keystore file carries a public summary (key ids and dates) but no secrets", () => {
+  const dir = tempDir();
+  const { keystore } = Keystore.open({ dir, password: "pw" });
+  const file = JSON.parse(fs.readFileSync(path.join(dir, "keystore.json"), "utf8"));
+  assert.equal(file.public.keys[0].kid, keystore.current().record.kid);
+  assert.doesNotMatch(JSON.stringify(file.public), /PRIVATE|publicKeys/);
 });
