@@ -142,6 +142,8 @@ So the only thing to protect on Papertrust's side is `/data` plus its password, 
 | Not one byte changed since | That a **printout** is unchanged (paper can't be fingerprinted; compare it with your stored original, or put a signed QR code on it) |
 | When it was signed, and with which key | Who typed the content in your application (that's your app's audit trail) |
 
+**Showing it to someone else.** When a document is disputed, your application can hand over an [evidence pack](EVIDENCE-PACKS.md): one ZIP with the files, their seals, your public keys and the chain of your register up to a point that others keep a copy of. Their expert runs `papertrust verify-pack` on it, offline, and gets a plain PASS or FAIL for every check, without trusting you or reaching your server.
+
 ---
 
 ## Questions people ask

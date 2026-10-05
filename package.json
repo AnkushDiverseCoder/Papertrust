@@ -1,6 +1,6 @@
 {
   "name": "papertrust",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Self-hosted document signing: render pages to PDF, sign them with Ed25519 + post-quantum ML-DSA-65, and prove later that nothing changed. No central authority, no accounts.",
   "type": "module",
   "license": "Apache-2.0",
@@ -36,6 +36,7 @@
     "NOTICE",
     "README.md",
     "SECURITY.md",
+    "docs/EVIDENCE-PACKS.md",
     "deploy"
   ],
   "scripts": {

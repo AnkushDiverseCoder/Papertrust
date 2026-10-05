@@ -12,6 +12,8 @@ Papertrust turns a page of your application into a PDF, signs it, and gives you 
 Created by **Thakur Ankush Singh (Vaishnavi Consultant)**. Open source under the [Apache License 2.0](LICENSE).
 
 > **New to this?** Start with [How Papertrust works, in plain words](docs/HOW-IT-WORKS.md): pictures, a worked example and the questions people ask.
+>
+> **Need to prove a document to someone else** (a court, an auditor)? See [Evidence packs](docs/EVIDENCE-PACKS.md): one ZIP that anyone checks offline with `papertrust verify-pack`.
 
 ---
 
@@ -487,6 +489,8 @@ papertrust rewrap     # re-encrypt the keystore after changing its password (sto
 papertrust new-identity  # move the keystore aside (kept) so the next start makes a new identity
                          # (stop the service first, or run it while locked)
 papertrust health     # exit 0 while the service answers (used by the Docker health check)
+papertrust verify-pack <file.zip | folder>
+                      # check an evidence pack offline (docs/EVIDENCE-PACKS.md); exit 0 = every check passed
 papertrust help
 ```
 
@@ -526,6 +530,9 @@ They can run the software, but not with your keys. Their instance has a differen
 **What if my server is hacked?**
 An attacker who controls the running instance can sign new things while they control it, as with any signing system. They can't change documents that were already issued without the change showing up, and they can't produce your past signatures for different content. Rotate the key and investigate.
 
+**How do I prove a document in court, or to an auditor?**
+Give them an [evidence pack](docs/EVIDENCE-PACKS.md): the files, their signatures, the public keys and the register chain up to a head that others hold, sealed in one ZIP. Their expert checks it offline with `papertrust verify-pack`, without trusting you or contacting your server.
+
 **Does it store my documents?**
 No. Papertrust only keeps its keys. Your application stores the PDFs and signatures.
 
@@ -564,7 +571,7 @@ Errors are `{ error }` with status `400` (bad input), `401` (authentication), `4
 
 ```
 Papertrust/
-├── bin/papertrust.mjs          command line (start, secret, keys, rotate, rewrap, new-identity, health, help)
+├── bin/papertrust.mjs          command line (start, secret, keys, rotate, rewrap, new-identity, verify-pack, health, help)
 ├── src/
 │   ├── server.mjs              HTTP service
 │   ├── auth.mjs                request authentication
@@ -575,8 +582,9 @@ Papertrust/
 │   ├── config.mjs              settings
 │   ├── status-page.mjs         status page and locked-mode page
 │   ├── canonical.mjs           canonical JSON
+│   ├── evidence.mjs            reading and checking evidence packs
 │   └── index.mjs               library exports
-├── test/                       node:test suites (crypto, keystore, server incl. a real render)
+├── test/                       node:test suites (crypto, keystore, evidence packs, server incl. a real render)
 ├── Dockerfile                  production image (Node 24 + Chromium, non-root, health check)
 ├── deploy/papertrust.service  systemd unit for servers without Docker
 ├── docker-compose.example.yml

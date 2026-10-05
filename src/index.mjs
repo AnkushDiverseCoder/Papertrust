@@ -18,3 +18,4 @@ export { canonical } from "./canonical.mjs";
 export { signRequest, TIME_HEADER, SIGNATURE_HEADER } from "./auth.mjs";
 export { verifyPair, fingerprint, groupFingerprint, keyId, signedBytes, SCHEME, PURPOSE_RE } from "./signatures.mjs";
 export { verifyChain, extendTrust, endorsedBy, recordWellFormed, endorsementText } from "./keychain.mjs";
+export { readPack, verifyEvidence } from "./evidence.mjs";

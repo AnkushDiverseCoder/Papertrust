@@ -10,6 +10,7 @@ import { ConfigError, loadConfig } from "../src/config.mjs";
 import { Keystore, KeystoreError, moveKeystoreAside } from "../src/keystore.mjs";
 import { startPapertrust } from "../src/server.mjs";
 import { fingerprint, groupFingerprint, postQuantumAvailable } from "../src/signatures.mjs";
+import { readPack, verifyEvidence } from "../src/evidence.mjs";
 
 /**
  * papertrust [command]
@@ -21,6 +22,7 @@ import { fingerprint, groupFingerprint, postQuantumAvailable } from "../src/sign
  *   rewrap   re-encrypt the keystore after changing its password (the service must be stopped, or locked)
  *   health   exit 0 while the local service answers (also in locked mode), 1 otherwise; used by Docker
  *   new-identity  move the keystore aside so the next start makes a new identity (stopped or locked service only)
+ *   verify-pack <file.zip | folder>  check an evidence pack offline, without contacting any server
  */
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -103,6 +105,25 @@ const commands = {
     keystore.rewrap(config.keyPassword);
     console.log("The keystore is now encrypted with the current password. Restart the service to use it.");
   },
+  "verify-pack"() {
+    const target = process.argv[3];
+    if (!target) fail("give the evidence pack: papertrust verify-pack <file.zip | folder>");
+    let files;
+    try { files = readPack(target); } catch (e) { fail(`can't read ${target}: ${e.message}`); }
+    const r = verifyEvidence(files);
+    console.log(`Papertrust evidence check ${version}
+${r.title ? `
+  ${r.title}
+` : ""}`);
+    for (const s of r.steps) console.log(`  ${s.ok ? "PASS" : "FAIL"}  ${s.label}${s.detail ? `  (${s.detail})` : ""}`);
+    if (r.fingerprints.length) console.log(`
+  ${r.fingerprints.length > 1 ? "Identities of the signer (first key fingerprints, oldest first)" : "Identity of the signer (first key fingerprint)"}:
+  ${r.fingerprints.join("\n  ")}
+  Compare it with an independent source: the issuer's status page, its published statements, or an earlier pack.`);
+    console.log(`
+  RESULT: ${r.ok ? "every check passed — the documents are exactly as the issuer registered them" : "one or more checks FAILED — do not rely on this pack"}`);
+    process.exit(r.ok ? 0 : 1);
+  },
   "new-identity"() {
     const config = loadConfig();
     refuseIfRunning(config.dataDir, { allowLocked: true });
@@ -124,7 +145,7 @@ const commands = {
   help() {
     console.log(`Papertrust ${version}: sign documents and prove they are unchanged.
 
-Usage: papertrust [start | secret | keys | rotate | rewrap | new-identity | health | help]
+Usage: papertrust [start | secret | keys | rotate | rewrap | new-identity | verify-pack | health | help]
 
   start    run the service (default)
   secret   print a new random secret
@@ -132,6 +153,7 @@ Usage: papertrust [start | secret | keys | rotate | rewrap | new-identity | heal
   rotate   replace the signing key now (stop the service first)
   rewrap   re-encrypt the keystore with a new password (stop the service first, or run it while locked)
   new-identity  move the keystore aside; the next start makes a new identity (stop the service first, or run it while locked)
+  verify-pack <file.zip | folder>  check an evidence pack offline (no server needed)
   health   exit 0 while the service answers (used by the Docker health check)
 
 Settings are environment variables; see README.md.`);
